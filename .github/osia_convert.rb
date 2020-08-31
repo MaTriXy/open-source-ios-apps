@@ -1,35 +1,21 @@
 require_relative 'osia_helper'
 require 'date'
 
-README = 'README.md'
+# Constants
 
+README = 'README.md'
 ARCHIVE = 'ARCHIVE.md'
+APPSTORE = 'APPSTORE.md'
+LATEST = 'LATEST.md'
+
+NOT_ENGLISH = '🌐'
 ARCHIVE_TAG = 'archive'
 
-APPSTORE = 'APPSTORE.md'
+LATEST_NUM = 30
 
-def apps_archived(apps)
-  a = apps.select {|a| a['tags'] != nil }.select {|b| b['tags'].include?ARCHIVE_TAG}
-  a.sort_by { |k, v| k['title'].downcase }
-end
+SHOW_TWITTER = false
 
-def apps_for_cat(apps, id)
-  f = apps.select do |a|
-
-    tags = a['tags']
-    if tags.nil?
-      true
-    else
-      !(tags.include? ARCHIVE_TAG)
-    end
-  end
-
-  s = f.select do |a|
-    cat = a['category-ids']
-    cat.class == Array ? cat.include?(id) : (cat == id)
-  end
-  s.sort_by { |k, v| k['title'].downcase }
-end
+# Helpers
 
 def app_store_total(j)
   apps = j['projects']
@@ -42,7 +28,7 @@ def app_store_total(j)
       t = "#{count} "
       count = count + 1
     else
-      unless tags.include? 'archive'
+      unless tags.include?(ARCHIVE_TAG)
         t = "#{count} #{tags}"
         count = count + 1
       end
@@ -50,6 +36,37 @@ def app_store_total(j)
   end
 
   count
+end
+
+def apps_archived(apps)
+  a = apps.select { |a| a['tags'] != nil }.select { |b| b['tags'].include?(ARCHIVE_TAG) }
+  a.sort_by { |k, v| k['title'].downcase }
+end
+
+def apps_for_cat(apps, id)
+  f = apps.select do |a|
+
+    tags = a['tags']
+    if tags.nil?
+      true
+    else
+      !(tags.include?(ARCHIVE_TAG))
+    end
+  end
+
+  s = f.select do |a|
+    cat = a['category-ids']
+    cat.class == Array ? cat.include?(id) : (cat == id)
+  end
+  s.sort_by { |k, v| k['title'].downcase }
+end
+
+def apps_latest(apps, num)
+  a = apps.select { |a| a['date_added'] != nil }
+    .sort_by { |k, v| DateTime.parse(k['date_added']) }
+    .reverse
+
+  a[0..num - 1]
 end
 
 def output_apps(apps, appstoreonly)
@@ -68,7 +85,7 @@ def output_apps(apps, appstoreonly)
     screenshots = a['screenshots']
     license = a['license']
 
-    t = "#{name}"
+    t = "[#{name}](#{link})"
 
     if desc.nil?
       t << ' '
@@ -85,23 +102,18 @@ def output_apps(apps, appstoreonly)
     end
 
     o << "- #{t} \n"
+    o <<  "  <details>\n\t<summary>"
 
-    o <<  "  <details><summary>"
-
-    details = ''
+    details = ""
 
     unless tags.nil?
       details << '<code>swift</code> ' if tags.include? 'swift'
-
       tags.each do |t|
-        details << "<code>#{t.downcase}</code> " if t.downcase!='swift'
+        details << "<code>#{t.downcase}</code> " if t.downcase != 'swift'
       end
     end
 
-    unless lang.nil?
-      details << output_flag(lang)
-      details << ' '
-    end
+    details << "#{NOT_ENGLISH} " unless lang.nil?
 
     unless stars.nil?
       details << output_stars(stars)
@@ -111,9 +123,6 @@ def output_apps(apps, appstoreonly)
     o << "</summary>"
 
     details_list = []
-
-    details_list.push link
-
     unless homepage.nil?
       details_list.push homepage
     end
@@ -125,101 +134,135 @@ def output_apps(apps, appstoreonly)
     end
 
     unless license.nil?
-      license_display = license=='other'? "`#{license}`" : "[`#{license}`](http://choosealicense.com/licenses/#{license}/)"
+      license_display = license == 'other' ? "`#{license}`" : "[`#{license}`](http://choosealicense.com/licenses/#{license}/)"
       details_list.push "License: #{license_display}"
     end
 
-    details = "\n\n  "
+    details = "\n\n\t"
     details << details_list[0]
     details_list[1..-1].each { |x| details << "<br>  #{x}" }
 
-    unless screenshots.nil?
-      details << "\n  <div>"
+    unless screenshots.nil? || screenshots.empty?
+      details << "<br>"
+      details << "\n\t"
       screenshots.each_with_index do |s, i|
-        details << "<img height='300' alt='#{name} image #{i+1}' src='#{screenshots[i]}'> "
+        details << "<a href='#{screenshots[i]}'><code>Screenshot #{i+1}</code></a> "
       end
-      details << "\n</div>"
     end
 
-    details << "\n  </details>\n\n"
+    details << "\n  "
+    details << "</details>\n\n"
     o << details
   end
   o
 end
 
-def output_badges(count)
+def output_badges(count, twitter)
   date = DateTime.now
   date_display = date.strftime "%B %e, %Y"
   date_display = date_display.gsub ' ', '%20'
 
-  b = "![](https://img.shields.io/badge/Projects-#{count}-green.svg) [![](https://img.shields.io/badge/Twitter-@opensourceios-blue.svg)](https://twitter.com/opensourceios) ![](https://img.shields.io/badge/Updated-#{date_display}-lightgrey.svg)"
-  b
-end
+  b = "![](https://img.shields.io/badge/Projects-#{count}-green.svg)"
 
-def output_flag(lang)
-  case lang
-  when 'deu'
-    '🇩🇪'
-  when 'fra'
-    '🇫🇷'
-  when 'jpn'
-    '🇯🇵'
-  when 'ltz'
-    '🇱🇺'
-  when 'nld'
-    '🇳🇱'
-  when 'por'
-    '🇵🇹'
-  when 'spa'
-    '🇪🇸'
-  when 'rus'
-    '🇷🇺'
-  when 'zho'
-    '🇨🇳'
-  else
-    ''
+  if twitter
+    b << " [![](https://img.shields.io/badge/Twitter-@opensourceios-blue.svg)](https://twitter.com/opensourceios)"
   end
+
+  b << " ![](https://img.shields.io/badge/Updated-#{date_display}-lightgrey.svg)"
+  return b
 end
 
 def output_stars(number)
   case number
   when 100...200
-    '🔥'
+    '⭐'
   when 200...500
-    '🔥🔥'
+    '⭐⭐'
   when 500...1000
-    '🔥🔥🔥'
+    '⭐⭐⭐'
   when 1000...2000
-    '🔥🔥🔥🔥'
+    '⭐⭐⭐⭐'
   when 2000...100000
-    '🔥🔥🔥🔥🔥'
+    '⭐⭐⭐⭐⭐'
   else
     ''
   end
 end
 
-def write_list(j, file, appstoreonly = false)
-  t    = j['title']
-  subt = j['subtitle']
+def write_archive(j, subtitle)
+  t = j['title']
+  apps = j['projects']
+  archived = apps_archived apps
+  footer = j['footer']
 
-  desc = if appstoreonly
-    "List of **#{app_store_total j}** open-source apps published on the App Store (complete list [here](https://github.com/dkhamsing/open-source-ios-apps))"
-  else
-    j['description']
+  output = "\# #{t} Archive\n\n"
+  output << subtitle
+  output << "\n"
+
+  archived.each do |a|
+    t = a['title']
+    s = a['source']
+    output << "- [#{t}](#{s})\n"
   end
 
-  h    = j['header']
-  f    = j['footer']
+  output << "\n"
+  output << footer
+
+  file = ARCHIVE
+  File.open(file, 'w') { |f| f.write output }
+  puts "wrote #{file} ✨"
+end
+
+def write_latest(j, num, subtitle)
+  t = j['title']
+  apps = j["projects"]
+  footer = j['footer']
+  latest = apps_latest(apps, num)
+
+  output = "\# #{t} Latest\n\n"
+  output << subtitle
+  output << "\n"
+
+  count = 1
+  latest.each do |a|
+    t = a['title']
+    s = a['source']
+    output << "#{count}. [#{t}](#{s})\n"
+    count = count + 1
+  end
+
+  output << "\n"
+  output << footer
+
+  file = LATEST
+  File.open(file, 'w') { |f| f.write output }
+  puts "wrote #{file} ✨"
+end
+
+def write_list(j, file, subtitle, appstoreonly = false)
+  t = j['title']
+  desc = j['description']
+  h = j['header']
+  f = j['footer']
   cats = j['categories']
   apps = j['projects']
+
+  sponsor = j['sponsor']
 
   output = '# ' + t
   output << "\n\n"
   output << desc
 
+  output << "\n\n#{subtitle}\n\n"
+
   if appstoreonly == false
-    output << "\n\n#{subt}\n\n"
-    output << output_badges(apps.count)
+    output << output_badges(apps.count, SHOW_TWITTER)
+
+    unless sponsor.length == 0
+      output << "\n\n"
+      output << sponsor
+      output << "\n"
+    end
   end
 
   output << "\n\nJump to\n\n"
@@ -228,7 +271,7 @@ def write_list(j, file, appstoreonly = false)
     title = c['title']
     m = title.match /\[.*?\]/
     title = m[0].sub('[', '').sub(']', '') unless m.nil?
-    temp = "#{'  ' unless c['parent']==nil }- [#{title}](\##{c['id']}) \n"
+    temp = "#{'  ' unless c['parent'] == nil }- [#{title}](\##{c['id']}) \n"
     output << temp
   end
 
@@ -259,32 +302,19 @@ def write_list(j, file, appstoreonly = false)
   puts "wrote #{file} ✨"
 end
 
-def write_archive(j)
-  t    = j['title']
-  desc = "This is an archive of the [main list](https://github.com/dkhamsing/open-source-ios-apps) for projects that are no longer maintained / old.\n\n"
-  f    = "## Contact\n\n- [github.com/dkhamsing](https://github.com/dkhamsing)\n- [twitter.com/dkhamsing](https://twitter.com/dkhamsing)\n"
-  apps = j['projects']
-  archived = apps_archived apps
-
-  output = "\# #{t} Archive\n\n"
-  output << desc
-
-  archived.each do |a|
-    t = a['title']
-    s = a['source']
-    output << "- #{t} #{s}\n"
-  end
-
-  output << "\n"
-  output << f
-
-  file = ARCHIVE
-  File.open(file, 'w') { |f| f.write output }
-  puts "wrote #{file} ✨"
-end
+# Script begins
 
 j = get_json
 
-write_list(j, README)
-write_archive(j)
-write_list(j, APPSTORE, true)
+
+subtitle_readme = j['subtitle']
+write_list(j, README, subtitle_readme)
+
+subtitle_app_store = "List of **#{app_store_total j}** open-source apps published on the App Store (complete list [here](https://github.com/dkhamsing/open-source-ios-apps))."
+write_list(j, APPSTORE, subtitle_app_store, true)
+
+subtitle_archive = "This is an archive of the [main list](https://github.com/dkhamsing/open-source-ios-apps) for projects that are no longer maintained / old.\n\n"
+write_archive(j, subtitle_archive)
+
+subtitle_latest = "These are the #{LATEST_NUM} latest entries from the [main list](https://github.com/dkhamsing/open-source-ios-apps).\n\n"
+write_latest(j, LATEST_NUM, subtitle_latest)
